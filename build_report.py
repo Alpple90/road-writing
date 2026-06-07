@@ -1,766 +1,386 @@
 from docx import Document
-from docx.shared import Pt, RGBColor, Cm, Inches
+from docx.shared import Pt, RGBColor, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml.ns import qn
-from docx.oxml import OxmlElement
 import re
 
 FONT = 'Times New Roman'
 SZ   = Pt(12)
 
 doc = Document()
-for section in doc.sections:
-    section.top_margin    = Cm(2.5)
-    section.bottom_margin = Cm(2.5)
-    section.left_margin   = Cm(2.5)
-    section.right_margin  = Cm(2.5)
+for s in doc.sections:
+    s.top_margin = s.bottom_margin = s.left_margin = s.right_margin = Cm(2.5)
 
-normal = doc.styles['Normal']
-normal.font.name = FONT
-normal.font.size = SZ
-
+doc.styles['Normal'].font.name = FONT
+doc.styles['Normal'].font.size = SZ
 for hn in ['Heading 1','Heading 2','Heading 3']:
     s = doc.styles[hn]
-    s.font.name  = FONT
-    s.font.size  = SZ
-    s.font.bold  = True
-    s.font.color.rgb = RGBColor(0,0,0)
+    s.font.name = FONT; s.font.size = SZ
+    s.font.bold = True; s.font.color.rgb = RGBColor(0,0,0)
 
-# ── helpers ────────────────────────────────────────────────────────────────
-def _render(p, text):
-    for i, part in enumerate(re.split(r'\*\*(.*?)\*\*', text)):
-        r = p.add_run(part)
-        r.font.name = FONT; r.font.size = SZ
-        if i % 2 == 1: r.bold = True
+def _r(p, text):
+    for i,part in enumerate(re.split(r'\*\*(.*?)\*\*', text)):
+        r = p.add_run(part); r.font.name = FONT; r.font.size = SZ
+        if i%2==1: r.bold = True
 
-def body(text, indent=False):
-    p = doc.add_paragraph()
-    p.paragraph_format.space_after  = Pt(6)
-    if indent:
-        p.paragraph_format.first_line_indent = Cm(1)
-    _render(p, text)
+def body(text):
+    p = doc.add_paragraph(); p.paragraph_format.space_after = Pt(6); _r(p,text)
 
-def h1(text): _h(1, text)
-def h2(text): _h(2, text)
-def h3(text): _h(3, text)
-def _h(level, text):
-    h = doc.add_heading('', level)
-    h.paragraph_format.space_before = Pt(12)
-    h.paragraph_format.space_after  = Pt(4)
+def h1(t): _h(1,t)
+def h2(t): _h(2,t)
+def _h(lv,t):
+    h = doc.add_heading('',lv)
+    h.paragraph_format.space_before = Pt(10); h.paragraph_format.space_after = Pt(4)
     r = h.runs[0] if h.runs else h.add_run()
-    r.text = text; r.font.name = FONT; r.font.size = SZ
-    r.font.bold = True; r.font.color.rgb = RGBColor(0,0,0)
+    r.text=t; r.font.name=FONT; r.font.size=SZ; r.font.bold=True; r.font.color.rgb=RGBColor(0,0,0)
 
 def bullet(text):
-    p = doc.add_paragraph(style='List Bullet')
-    p.paragraph_format.space_after = Pt(3)
-    _render(p, text)
+    p = doc.add_paragraph(style='List Bullet'); p.paragraph_format.space_after = Pt(3); _r(p,text)
 
 def nbullet(text):
-    p = doc.add_paragraph(style='List Number')
-    p.paragraph_format.space_after = Pt(3)
-    _render(p, text)
+    p = doc.add_paragraph(style='List Number'); p.paragraph_format.space_after = Pt(3); _r(p,text)
 
-def tbl(headers, rows, col_widths=None):
-    t = doc.add_table(rows=1+len(rows), cols=len(headers))
-    t.style = 'Table Grid'
+def tbl(headers, rows):
+    t = doc.add_table(rows=1+len(rows), cols=len(headers)); t.style='Table Grid'
     for i,h in enumerate(headers):
-        c = t.rows[0].cells[i]
-        c.text = h
-        for r in c.paragraphs[0].runs:
-            r.bold = True; r.font.name = FONT; r.font.size = SZ
+        c=t.rows[0].cells[i]; c.text=h
+        for r in c.paragraphs[0].runs: r.bold=True; r.font.name=FONT; r.font.size=SZ
         c.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
     for ri,row in enumerate(rows):
         for ci,val in enumerate(row):
-            c = t.rows[ri+1].cells[ci]
-            c.text = val
-            for r in c.paragraphs[0].runs:
-                r.font.name = FONT; r.font.size = SZ
+            c=t.rows[ri+1].cells[ci]; c.text=val
+            for r in c.paragraphs[0].runs: r.font.name=FONT; r.font.size=SZ
     doc.add_paragraph()
 
-def page_break():
-    doc.add_page_break()
-
-def italic_body(text):
-    p = doc.add_paragraph()
-    p.paragraph_format.space_after = Pt(6)
-    parts = re.split(r'\*\*(.*?)\*\*', text)
-    for i,part in enumerate(parts):
-        r = p.add_run(part)
-        r.font.name = FONT; r.font.size = SZ
-        r.italic = True
+def pb(): doc.add_page_break()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # COVER PAGE
 # ══════════════════════════════════════════════════════════════════════════════
-p = doc.add_paragraph(); p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-r = p.add_run('\n\n')
-r.font.name = FONT; r.font.size = SZ
-
+for _ in range(3): doc.add_paragraph()
 p = doc.add_paragraph(); p.alignment = WD_ALIGN_PARAGRAPH.CENTER
 r = p.add_run('Lane Keep Assist Using Chip Enabled Raised Pavement Markers:\nInterpolation Algorithm Robustness Under CERPM Dropout Conditions')
-r.font.name = FONT; r.font.size = Pt(16); r.bold = True
+r.font.name=FONT; r.font.size=Pt(16); r.bold=True
 
 doc.add_paragraph()
-
 p = doc.add_paragraph(); p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-r = p.add_run('Final Research Report')
-r.font.name = FONT; r.font.size = Pt(13); r.bold = True
+r = p.add_run('Final Research Report — Advanced Driver Assistance Systems')
+r.font.name=FONT; r.font.size=Pt(13); r.bold=True
 
 doc.add_paragraph()
-
-for label, value in [
-    ('Course:', 'Advanced Driver Assistance Systems — Research Project'),
-    ('Author:', 'Alexander Bruce'),
-    ('Date:', 'June 2026'),
-]:
+for label, value in [('Author:', 'Alexander Bruce'), ('Date:', 'June 2026')]:
     p = doc.add_paragraph(); p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r1 = p.add_run(f'{label}  '); r1.bold = True; r1.font.name = FONT; r1.font.size = SZ
-    r2 = p.add_run(value);         r2.font.name = FONT; r2.font.size = SZ
+    r1=p.add_run(f'{label}  '); r1.bold=True; r1.font.name=FONT; r1.font.size=SZ
+    r2=p.add_run(value); r2.font.name=FONT; r2.font.size=SZ
 
 doc.add_paragraph()
-doc.add_paragraph()
-
-# Contribution table
 p = doc.add_paragraph(); p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-r = p.add_run('Student Contributions'); r.bold = True; r.font.name = FONT; r.font.size = SZ
-
-tbl(
-    ['Student', 'Contribution', 'Sections'],
-    [
-        ['Alexander Bruce',
-         'LKA sub-system: literature review; simulation framework design and implementation; '
-         'Monte Carlo parameter sweep; statistical analysis and visualisation; report writing',
-         'All'],
-    ]
-)
-
-page_break()
+r = p.add_run('Student Contributions'); r.bold=True; r.font.name=FONT; r.font.size=SZ
+tbl(['Student','Role','Contribution'],
+    [['Alexander Bruce','Sole author',
+      'Literature review; simulation framework; Monte Carlo execution; analysis; report']])
+pb()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ABSTRACT
 # ══════════════════════════════════════════════════════════════════════════════
 h1('Abstract')
 body(
-    'This report describes the Lane Keep Assist (LKA) sub-system, developed as part of a '
-    'group Advanced Driver Assistance Systems (ADAS) project. Lane departure is a leading '
-    'cause of road fatalities: in Australia alone, 62% of all road deaths are attributable '
-    'to lane departure events [3]. Current LKA systems rely on front-facing cameras with '
-    'computer vision algorithms, but these degrade substantially under poor lane markings '
-    'and adverse weather conditions [6] — the conditions most associated with serious crashes. '
-    'This project investigates a Vehicle-to-Infrastructure (V2I) alternative using Chip '
-    'Enabled Raised Pavement Markers (CERPMs), which transmit their GPS coordinates directly '
-    'to the vehicle, as a more robust positioning source [1][2].'
+    'This report presents the Lane Keep Assist (LKA) sub-system of a group Advanced Driver '
+    'Assistance Systems (ADAS) project. Current camera-based LKA degrades under poor lane '
+    'markings and adverse weather [6] — conditions associated with the highest crash risk. '
+    'A Vehicle-to-Infrastructure (V2I) alternative using Chip Enabled Raised Pavement Markers '
+    '(CERPMs) has been shown to outperform commercial vision systems [1][2], but prior work '
+    'used only cubic spline interpolation and assumed complete marker availability. This project '
+    'fills that gap: seven interpolation algorithms were evaluated via Monte Carlo simulation '
+    '(n = 2,000 runs per condition) under random dropout (1–20%) and clustered contiguous '
+    'dropout (cluster sizes 2–20) at six CERPM spacings (0.5–12.0 m), where 12 m reflects '
+    'the real-world deployment interval used in the foundational literature [2]. Quintic and '
+    'quartic B-splines with arc-length parameterisation consistently achieved the lowest error '
+    'and failure rates. At the literature deployment spacing of 12 m, all methods reach 100% '
+    'failure under clustered dropout, demonstrating that finer spacing is necessary for '
+    'robust real-world deployment.'
 )
-body(
-    'The central research question is which interpolation algorithm most accurately reconstructs '
-    'the lane centreline from CERPM boundary data when markers are missing. Seven algorithms — '
-    'linear, quadratic, cubic spline, quartic, quintic, PCHIP, and Akima — were evaluated '
-    'using Monte Carlo simulation (n = 2,000 runs per condition) against two failure modes: '
-    'random independent dropout (1–20%) and clustered contiguous dropout (cluster sizes 2–20), '
-    'at five CERPM spacings (0.5–5.0 m). Reconstruction accuracy was measured as perpendicular '
-    'distance from the estimated centreline to a Lanelet2 ground-truth centreline, with a '
-    '0.2 m maximum-error failure threshold aligned to autonomous driving accuracy standards.'
-)
-body(
-    'Higher-order polynomial B-splines (quadratic, cubic spline, quartic, and quintic) '
-    'consistently outperformed linear interpolation, PCHIP, and Akima across all conditions. '
-    'Linear interpolation failed at rates exceeding 93% under clustered dropout at 5 m spacing. '
-    'Quintic and quartic B-spline interpolation at marker spacings of 2 m or finer is recommended '
-    'for any CERPM-based LKA deployment, with system-level fallback triggered for clustered '
-    'gaps exceeding 10 consecutive markers.'
-)
-
-page_break()
-
-# ══════════════════════════════════════════════════════════════════════════════
-# TABLE OF CONTENTS
-# ══════════════════════════════════════════════════════════════════════════════
-h1('Table of Contents')
-toc = [
-    ('Abstract', ''),
-    ('1. Introduction', ''),
-    ('   1.1. Background and Motivation', ''),
-    ('   1.2. Problem Statement', ''),
-    ('   1.3. Aims and Research Questions', ''),
-    ('2. Literature Review', ''),
-    ('   2.1. Lane Keep Assist: State of the Art', ''),
-    ('   2.2. Infrastructure-Based Positioning with CERPMs', ''),
-    ('   2.3. Interpolation Methods for Road Geometry', ''),
-    ('   2.4. Gaps in Current Research', ''),
-    ('3. Methodology', ''),
-    ('   3.1. Overview', ''),
-    ('   3.2. Road Geometry and Ground Truth', ''),
-    ('   3.3. CERPM Placement Simulation', ''),
-    ('   3.4. Dropout Models', ''),
-    ('   3.5. Interpolation Methods', ''),
-    ('   3.6. Monte Carlo Simulation', ''),
-    ('   3.7. Error Measurement and Statistics', ''),
-    ('4. Results and Analysis', ''),
-    ('   4.1. Random Dropout Results', ''),
-    ('   4.2. Clustered Dropout Results', ''),
-    ('   4.3. Method Rankings', ''),
-    ('   4.4. Changes from Initial Research Plan', ''),
-    ('5. Conclusions and Recommendations', ''),
-    ('References', ''),
-    ('Appendix A: Code Structure', ''),
-]
-for item, _ in toc:
-    p = doc.add_paragraph(item)
-    p.paragraph_format.space_after = Pt(1)
-    for r in p.runs: r.font.name = FONT; r.font.size = SZ
-
-page_break()
+pb()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 1. INTRODUCTION
 # ══════════════════════════════════════════════════════════════════════════════
 h1('1. Introduction')
-
-h2('1.1. Background and Motivation')
 body(
-    'Road transportation remains one of the leading causes of preventable death globally. '
-    'Lane departure — where a vehicle unintentionally crosses a lane boundary — is a '
-    'particularly lethal crash type because it frequently results in head-on collisions or '
-    'run-off-road events at high speed. In Australia, the Department of Infrastructure reports '
-    'that 62% of all road fatalities nationally, 73% in regional areas, and 71% in remote '
-    'areas are attributable to lane departure [3]. In the United States, the National Highway '
-    'Traffic Safety Administration (NHTSA) estimates that vehicles equipped with Lane Keep '
-    'Assist (LKA) are on average 24% less likely to be involved in a fatal road departure '
-    'crash [4]. Recognising this, the European Commission mandated LKA as standard equipment '
-    'on all new vehicles sold after July 2024, with projections that the measure will save '
-    'over 25,000 lives by 2038 [5].'
+    'Lane departure is a leading cause of road fatalities. In Australia, 62% of all road '
+    'deaths nationally are attributable to lane departure events — rising to 73% in regional '
+    'and 71% in remote areas [3]. The NHTSA estimates LKA-equipped vehicles are 24% less '
+    'likely to be involved in fatal road departure crashes [4], and the EU has mandated LKA '
+    'on all new vehicles sold after July 2024 [5]. LKA applies corrective steering when a '
+    'vehicle drifts toward a lane boundary without signalling, and forms the foundation of '
+    'higher-level ADAS functionality.'
 )
 body(
-    'Lane Keep Assist is a driver assistance feature that monitors lane position and applies '
-    'corrective steering torque when a vehicle begins to drift toward a lane boundary without '
-    'a turn signal active. Unlike automated lane-centring systems, LKA is reactive and designed '
-    'to be easily overridden by the driver, maintaining full driver authority. It forms a '
-    'foundational component of ADAS upon which higher levels of driving automation are built. '
-    'This sub-project contributes the centreline estimation module to a broader group ADAS '
-    'project, providing the lane position input required by the LKA control sub-system.'
-)
-
-h2('1.2. Problem Statement')
-body(
-    'Current commercial LKA systems rely on front-facing cameras and computer vision '
-    'algorithms to detect lane boundaries. Despite significant advances in deep learning-based '
-    'lane detection, field benchmarking has confirmed that these systems degrade substantially '
-    'under conditions that include poor or absent lane markings, adverse weather (rain, fog, '
-    'glare), and geometrically complex sections such as sharp curves and lane transitions [6]. '
-    'These are precisely the conditions most associated with serious road crashes, particularly '
-    'on regional and rural roads where lane markings are often poorly maintained.'
+    'Current LKA systems use front-facing cameras, but field benchmarking via the OpenLKA '
+    'dataset [6] confirmed substantial degradation under poor lane markings and adverse '
+    'weather — precisely the conditions most associated with fatal crashes on regional roads. '
+    'Sharma et al. [1] and Kadav et al. [2] demonstrated that CERPMs — GPS-transmitting road '
+    'studs — outperform the Mobileye 630 vision system across all tested conditions, with '
+    'an effective sensing range of 350 m versus 31 m for the camera. Their experiments '
+    'physically deployed CERPMs at 40-foot (~12 m) intervals. However, both studies applied '
+    'cubic spline interpolation without evaluating alternatives and did not investigate '
+    'the impact of missing markers on reconstruction accuracy.'
 )
 body(
-    'A promising alternative is a Vehicle-to-Infrastructure (V2I) approach using Chip Enabled '
-    'Raised Pavement Markers (CERPMs). Sharma et al. [1] and Kadav et al. [2] demonstrated '
-    'that CERPMs — modified road studs containing GPS transceivers — outperform the Mobileye '
-    '630 commercial vision system across all tested road conditions, with an effective sensing '
-    'range of 350 m compared to 31 m for the camera system. In their experiments, CERPMs were '
-    'physically deployed at 40-foot (~12.2 m) intervals along lane boundaries [2]. However, '
-    'both studies used cubic spline interpolation without evaluating alternative methods, and '
-    'neither investigated the effect of missing markers on reconstruction accuracy. In practice, '
-    'individual CERPMs may fail due to battery depletion, physical damage, flooding, or '
-    'wireless communication loss. Without understanding how interpolation algorithms respond '
-    'to dropout, a CERPM-based LKA system cannot be deployed with confidence in its '
-    'worst-case behaviour.'
+    'This project addresses that gap. Three research questions are investigated: '
+    '(RQ1) Which algorithm provides the most accurate centreline reconstruction under CERPM '
+    'dropout? (RQ2) At what spacing and dropout severity does reconstruction error exceed '
+    'the 0.2 m safety threshold? (RQ3) Is clustered dropout more damaging than random '
+    'dropout at equivalent effective loss rates?'
 )
-
-h2('1.3. Aims and Research Questions')
-body('This project addresses the identified gap with the following aims:')
-nbullet('To implement a Monte Carlo simulation framework that evaluates road centreline reconstruction accuracy under controlled CERPM dropout conditions.')
-nbullet('To compare seven interpolation algorithms across a comprehensive parameter space of CERPM spacings and dropout severities.')
-nbullet('To identify which algorithm provides the most robust reconstruction and define the conditions under which each fails.')
-nbullet('To produce actionable guidance for engineers and infrastructure managers deploying CERPM-based LKA systems.')
-
-doc.add_paragraph()
-body('These aims are addressed through three research questions:')
-bullet('**RQ1:** Which interpolation algorithm provides the most accurate and consistent lane centreline reconstruction from incomplete CERPM data, and how does performance vary with marker spacing?')
-bullet('**RQ2:** At what combination of CERPM spacing and dropout severity does each algorithm\'s reconstruction error exceed the 0.2 m safety threshold?')
-bullet('**RQ3:** Is clustered (spatially contiguous) marker dropout more damaging to reconstruction accuracy than random dropout at equivalent effective loss rates?')
-
-page_break()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 2. LITERATURE REVIEW
 # ══════════════════════════════════════════════════════════════════════════════
 h1('2. Literature Review')
-
-h2('2.1. Lane Keep Assist: State of the Art')
 body(
-    'LKA technology has advanced considerably over the past decade. Early systems used '
-    'simple threshold-based lane detection with rule-based torque overlays. Contemporary '
-    'systems combine deep learning lane detection with model-based vehicle dynamics and '
-    'increasingly sophisticated control strategies. Fakhari and Anwar [7][8] proposed a '
-    'Multiple Model Adaptive Estimation (MMAE) algorithm fusing front and rear camera '
-    'inputs with a Kalman filter to improve lane detection robustness under challenging '
-    'conditions including night driving and adverse weather. The system computes uncertainty '
-    'estimates for each model and selects the most accurate for prevailing conditions, '
-    'providing improved performance over single-model approaches.'
+    'LKA technology has advanced from simple threshold-based detection to deep learning lane '
+    'detection combined with Kalman filtering. Fakhari and Anwar [7][8] proposed a Multiple '
+    'Model Adaptive Estimation (MMAE) approach fusing front and rear cameras with a Kalman '
+    'filter, improving detection under night and adverse weather conditions. Perozzi et al. [9] '
+    'demonstrated a shared sliding-mode controller for steer-by-wire LKA that smoothly '
+    'transitions authority between driver and automated system. Wei et al. [10] reviewed LKA '
+    'assessment methodologies and identified standardisation gaps across performance, safety, '
+    'and driver interaction dimensions.'
 )
 body(
-    'On the control side, Perozzi et al. [9] demonstrated a shared sliding-mode controller '
-    'for steer-by-wire LKA vehicles that smoothly transitions steering authority between the '
-    'driver and the automated system based on a sharing parameter. Testing in the SHERPA '
-    'dynamic vehicle simulator showed stable, smooth authority transitions, making it a '
-    'strong candidate for integration with a CERPM-based positioning system. Wei et al. [10] '
-    'provide a comprehensive review of LKA assessment methodologies, identifying gaps in '
-    'standardisation across performance, comfort, safety, driver interaction, and driving '
-    'style evaluation dimensions. Their proposed evaluation framework is directly applicable '
-    'to validating a CERPM-based LKA implementation.'
+    'On the infrastructure sensing side, Sharma et al. [1] introduced CERPMs as an '
+    'energy-efficient IIS achieving at least 90% energy savings over commercial camera '
+    'solutions. Kadav et al. [2] extended this to lane centering and lane change, deploying '
+    'CERPMs at 40 ft (~12 m) spacing. Where the Mobileye failed to detect lane markings '
+    'for 93.3% of a sharp-curve route, the CERPM system maintained reconstruction '
+    'throughout. Critically, both studies used cubic spline interpolation — the method '
+    'originally proposed for road centreline fitting by Burden and Faires [11] — without '
+    'exploring alternatives or simulating marker failures.'
 )
 body(
-    'The OpenLKA dataset [6] represents the most comprehensive field benchmark of commercial '
-    'LKA performance to date. Compiled from approximately 400 hours of LKA-steered data '
-    'across 62 production vehicle models in real-world road testing in Florida and from '
-    'global contributors, the dataset empirically confirmed that LKA systems fail most '
-    'frequently under poor lane markings and near lane transitions — the conditions most '
-    'prevalent on the regional and rural roads where lane departure fatalities are highest.'
+    'Higher-order B-splines (de Boor [12]), PCHIP (Fritsch and Carlson [13]), and Akima '
+    'splines [14] each address different limitations of cubic spline in sparse data '
+    'scenarios. Arc-length parameterisation (Hartley and Zisserman [15]) is essential for '
+    'all these methods when marker spacing becomes irregular after dropout. No prior work '
+    'has applied these alternatives to the CERPM lane reconstruction problem, nor '
+    'characterised accuracy under marker failure — establishing the clear need for '
+    'this research.'
 )
-
-h2('2.2. Infrastructure-Based Positioning with CERPMs')
-body(
-    'The CERPM concept was first proposed and validated by Sharma et al. [1], who demonstrated '
-    'that chip-enabled raised pavement markers could provide GPS coordinate data to an '
-    'autonomous vehicle at ranges up to 350 m, far exceeding the 31 m range of the Mobileye '
-    '630 camera system used for comparison. CERPMs integrate an IoT development board and '
-    '915 MHz radio transceiver into a standard raised pavement marker form factor, transmitting '
-    'latitude, longitude, altitude, and additional parameters to an on-board receiver. The '
-    'energy consumption of the CERPM approach was shown to be at least 90% lower than '
-    'equivalent commercial camera-based solutions [1].'
-)
-body(
-    'Kadav et al. [2] extended this work to a full lane centering and lane change application, '
-    'physically deploying CERPMs at 40-foot (~12.2 m) intervals along both lane boundaries of '
-    'test routes at Oak Ridge National Laboratory and subsequently in more complex road '
-    'environments. Their results showed CERPMs outperforming the Mobileye system in all tested '
-    'scenarios, including roads with sharp curves (where the Mobileye failed to detect lane '
-    'markings for 93.3% of the route), varying lighting conditions, and roads with inadequate '
-    'lane markings. Cubic spline interpolation was applied to CERPM position data to reconstruct '
-    'continuous lane boundaries, but no evaluation of alternative interpolation methods or '
-    'the effect of marker dropout was conducted — the gap that this project directly addresses.'
-)
-
-h2('2.3. Interpolation Methods for Road Geometry')
-body(
-    'Road boundaries are geometrically smooth curves, typically designed to curvature standards '
-    'specifying minimum curve radii and clothoid transition spirals. This smoothness has '
-    'important implications for algorithm selection: a method that exploits smoothness will '
-    'extrapolate more accurately across data gaps than one that does not.'
-)
-body(
-    'Burden and Faires [11] provide a thorough treatment of polynomial spline interpolation. '
-    'Natural cubic splines, which enforce C² continuity and zero second derivative at '
-    'endpoints, are the standard choice in road geometry applications — and the method '
-    'used in the prior CERPM work [1][2]. However, cubic splines can exhibit Runge\'s '
-    'phenomenon — spurious oscillations — when data is sparse or unevenly distributed, '
-    'which is precisely the situation arising under CERPM dropout. Higher-order B-splines '
-    '(quartic, quintic) extend the polynomial degree, potentially improving gap extrapolation '
-    'at the cost of greater sensitivity to endpoint conditions (de Boor [12]).'
-)
-body(
-    'Fritsch and Carlson [13] introduced PCHIP (Piecewise Cubic Hermite Interpolating '
-    'Polynomial) to address oscillation by enforcing monotonicity in each interval. While '
-    'effective for step-function-like data, this constraint can be detrimental for road '
-    'geometry, which is smooth but not monotone in individual coordinate directions. Akima [14] '
-    'proposed a locally-weighted spline that limits the influence of distant data on local '
-    'curve shape, offering resistance to the propagation of gap effects, but requiring a '
-    'minimum of three points to function. All methods benefit from arc-length parameterisation '
-    '— computing a normalised cumulative chord length t ∈ [0,1] — which prevents the '
-    'systematic distortion introduced by index-based parameterisation when marker spacing '
-    'is irregular after dropout (Hartley and Zisserman [15]).'
-)
-
-h2('2.4. Gaps in Current Research')
-body(
-    'The review identifies the following gap: both foundational CERPM studies [1][2] use '
-    'cubic spline interpolation exclusively and assume complete marker availability. No '
-    'published study has evaluated alternative interpolation methods for CERPM-based lane '
-    'reconstruction, nor systematically characterised accuracy degradation under marker '
-    'dropout. The real-world deployment spacing of 40 feet (~12.2 m) used in [2] represents '
-    'a coarse configuration that amplifies the impact of any missing marker, making this '
-    'analysis particularly important for practical deployment. This project fills the gap '
-    'by providing the first systematic, simulation-based comparison of seven interpolation '
-    'algorithms under controlled dropout conditions across a range of marker spacings.'
-)
-
-page_break()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 3. METHODOLOGY
 # ══════════════════════════════════════════════════════════════════════════════
 h1('3. Methodology')
-
-h2('3.1. Overview')
 body(
-    'The methodology follows a simulation-based experimental design. A Python framework '
-    'was developed to: (1) ingest real road geometry from a Lanelet2 map; (2) simulate '
-    'CERPM placement along road boundaries; (3) apply controlled dropout; (4) reconstruct '
-    'boundaries using each interpolation algorithm; and (5) measure centreline error against '
-    'a ground truth. Monte Carlo repetition at n = 2,000 trials per condition provides '
-    'statistically stable estimates of both typical and worst-case performance. All code '
-    'is version-controlled in Git and designed for full reproducibility via seeded '
-    'random number generation.'
-)
-
-h2('3.2. Road Geometry and Ground Truth')
-body(
-    'Road geometry was sourced from the Town07 Lanelet2 OpenStreetMap (OSM) file — a '
-    'standardised autonomous driving simulation environment containing diverse road types '
-    'including straights, moderate curves, and tight bends. The test.py module parses the '
-    'XML to extract node coordinates (in local metric x, y), ordered way linestrings '
-    'representing left and right road edges, and lanelet relations pairing them into '
-    'lane segments. Adjacent lanelets are merged into a continuous road boundary pair '
-    'providing sufficient geometric variety for the evaluation.'
+    'A Python simulation framework was developed across four modules: **test.py** (Lanelet2 '
+    'OSM parser, CERPM placement, ground-truth centreline computation); **Interpolations.py** '
+    '(seven interpolation methods with arc-length parameterisation); **Simulation.py** '
+    '(parallelised Monte Carlo engine with random and clustered dropout); and **xmlParse.py** '
+    '(full parameter sweep, statistical aggregation, and visualisation).'
 )
 body(
-    'The ground-truth centreline is computed by the calCenterline() function, which '
-    'parameterises both boundary linestrings by arc length, resamples each to 500 evenly '
-    'spaced arc-length fractions, and averages paired points. This produces a dense, '
-    'smooth ground-truth centreline against which all reconstructed centrelines are compared '
-    'using Shapely geometry operations.'
+    'Road geometry was sourced from the Town07 Lanelet2 map — a standardised autonomous '
+    'driving environment with varied curve types. The ground-truth centreline was computed '
+    'by resampling both boundary linestrings to 500 arc-length fractions and averaging '
+    'paired points. CERPM positions were simulated at six uniform spacings: 0.5, 1, 2, 4, '
+    '6, and 12 m, where 12 m corresponds to the ~40 ft deployment in Kadav et al. [2].'
 )
-
-h2('3.3. CERPM Placement Simulation')
 body(
-    'The resample() function simulates CERPM deployment by resampling each road boundary '
-    'to uniform spacing d, producing ordered lists of left and right marker positions. '
-    'Five spacings were tested:'
+    'Two dropout models were applied. **Random dropout** removed each marker independently '
+    'at rates of 1%, 5%, 10%, 15%, and 20%, modelling uncorrelated faults. **Clustered '
+    'dropout** removed a single contiguous run of 2, 5, 10, 15, or 20 markers from one '
+    'boundary per trial, modelling localised failure (flooding, surface damage). Seven '
+    'interpolation algorithms were tested:'
 )
 tbl(
-    ['Spacing (m)', 'Approx. spacing (ft)', 'Deployment context'],
+    ['Method','Continuity','Key property'],
     [
-        ['0.5 m', '1.6 ft',  'Very high density — research/urban premium'],
-        ['1.0 m', '3.3 ft',  'High density'],
-        ['2.0 m', '6.6 ft',  'Moderate density'],
-        ['3.0 m', '9.8 ft',  'Low density'],
-        ['5.0 m', '16.4 ft', 'Very low density'],
+        ['Linear',           'C⁰','Piecewise straight; baseline comparison'],
+        ['Quadratic spline', 'C¹','Smooth; low computational cost'],
+        ['Cubic spline',     'C²','Used in prior CERPM work [1][2]'],
+        ['Quartic spline',   'C³','Higher-order curvature flexibility'],
+        ['Quintic spline',   'C⁴','Highest order tested; very smooth'],
+        ['PCHIP',            'C¹','Monotone; no overshoot between knots'],
+        ['Akima',            'C¹','Locally weighted; limits gap propagation'],
     ]
 )
 body(
-    'Note: the real-world deployment in Kadav et al. [2] used 40 ft (~12.2 m) spacing — '
-    'coarser than all conditions tested here. The simulation therefore evaluates a range of '
-    'spacings finer than the literature baseline, providing insight into how much improvement '
-    'in marker density would buy in reconstruction robustness.'
+    'All methods use arc-length parameterisation. Methods requiring ≥ 3 points (cubic spline, '
+    'Akima) fall back to linear when fewer points survive dropout. For each of the 420 '
+    'parameter combinations, 2,000 independent seeded Monte Carlo trials were executed in '
+    'parallel using ProcessPoolExecutor. Per trial, perpendicular distance from the '
+    'reconstructed centreline to the ground truth was measured via Shapely geometry, '
+    'yielding mean error and max error. Statistics reported are: IQR (P75 − P25 of mean '
+    'error) as the primary robustness metric, and failure rate (proportion of trials '
+    'where max error > 0.2 m) as the safety-relevant threshold, aligned to ISO 21448 and '
+    'SAE J3016 positioning accuracy requirements.'
 )
-
-h2('3.4. Dropout Models')
-body('Two failure models were implemented, reflecting distinct real-world failure mechanisms:')
-body(
-    '**Random (independent) dropout** — each CERPM on both boundaries is independently '
-    'removed with probability p per trial, modelling uncorrelated spontaneous faults '
-    '(battery depletion, random communication loss). Dropout rates tested: 1%, 5%, 10%, '
-    '15%, 20%.'
-)
-body(
-    '**Clustered (contiguous) dropout** — a single contiguous run of markers is removed '
-    'from one boundary (left or right, selected randomly per trial), modelling a localised '
-    'zone of failure such as flooding, road surface damage, or a wireless dead spot. Cluster '
-    'sizes tested: 2, 5, 10, 15, 20 consecutive markers. This is the more operationally '
-    'severe model because it removes all geometric information across an extended stretch, '
-    'forcing the algorithm to extrapolate across a continuous gap.'
-)
-
-h2('3.5. Interpolation Methods')
-body(
-    'Seven methods were implemented in Interpolations.py. All use arc-length '
-    'parameterisation: cumulative chord lengths are computed between surviving marker '
-    'positions and normalised to t ∈ [0,1], then x(t) and y(t) are interpolated '
-    'independently and resampled to the original point count.'
-)
-tbl(
-    ['Method', 'Continuity', 'Implementation', 'Key Property'],
-    [
-        ['Linear',           'C⁰', 'numpy.interp',                    'Piecewise straight; no curvature estimation'],
-        ['Quadratic spline', 'C¹', 'scipy make_interp_spline (k=2)',   'Smooth; limited curvature'],
-        ['Cubic spline',     'C²', 'scipy CubicSpline (natural)',      'Used in prior CERPM work [1][2]'],
-        ['Quartic spline',   'C³', 'scipy make_interp_spline (k=4)',   'Higher-order curvature flexibility'],
-        ['Quintic spline',   'C⁴', 'scipy make_interp_spline (k=5)',   'Highest order tested'],
-        ['PCHIP',            'C¹', 'scipy PchipInterpolator',          'Monotone; no overshoot between knots'],
-        ['Akima',            'C¹', 'scipy Akima1DInterpolator',        'Locally weighted; requires ≥ 3 points'],
-    ]
-)
-body(
-    'When dropout reduces surviving points below the minimum required (fewer than 3 for '
-    'cubic spline and Akima, or fewer than the polynomial degree for B-splines), a graceful '
-    'fallback to linear interpolation is applied to ensure a result is always returned.'
-)
-
-h2('3.6. Monte Carlo Simulation')
-body(
-    'For each combination of {interpolation method × CERPM spacing × dropout condition}, '
-    '2,000 independent trials were executed using runMonteCarloRandom() or '
-    'runMonteCarloClusteredSingle(). Each trial uses a unique seed derived from a master '
-    'base seed, ensuring exact reproducibility. Trials were parallelised across all available '
-    'CPU cores using Python\'s ProcessPoolExecutor, reducing total computation time from '
-    'an estimated 18 hours serial to under 3 hours.'
-)
-body(
-    'Per trial: surviving CERPM positions are passed to each interpolation method, which '
-    'reconstructs the full boundary at the original point count. A centreline is computed '
-    'from the reconstructed boundaries, and perpendicular error is measured against the '
-    'ground truth using Shapely\'s LineString.distance(). Both mean error (average across '
-    'all centreline points) and max error (worst-case single-point deviation) are recorded.'
-)
-
-h2('3.7. Error Measurement and Statistics')
-body(
-    'Across 2,000 trials, three statistics are computed per condition:'
-)
-bullet('**Median IQR (P75 − P25 of mean error):** The primary performance metric. IQR is preferred over mean or variance because it is robust to heavy-tailed distributions produced by rare catastrophic failure trials.')
-bullet('**Failure rate:** Proportion of trials where max error exceeded 0.2 m — the sub-0.2 m positioning accuracy threshold implied by ISO 21448 and SAE J3016 for lane-keeping applications.')
-bullet('**IQR band:** The P25–P75 envelope of mean error plotted against CERPM interval, showing typical reconstruction uncertainty.')
-body(
-    'Convergence of the IQR estimator was verified: relative change stabilised within 1% '
-    'beyond approximately 1,500 trials, confirming n = 2,000 as sufficient.'
-)
-
-page_break()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 4. RESULTS AND ANALYSIS
 # ══════════════════════════════════════════════════════════════════════════════
 h1('4. Results and Analysis')
 
-h2('4.1. Random Dropout Results')
+h2('4.1. Random Dropout')
 body(
-    'Under random independent dropout, a clear performance hierarchy emerges across all '
-    'tested conditions. Figure 1 (IQR band plots, random dropout) shows that linear '
-    'interpolation diverges rapidly from the polynomial spline methods as CERPM interval '
-    'increases beyond 1 m. At 5 m spacing and 20% dropout, linear interpolation reaches '
-    'a median IQR of approximately 0.1 m — roughly 50–100× greater than the quadratic '
-    'through quintic methods, which remain below 0.002 m median IQR across the same '
-    'conditions.'
+    'Under random dropout, higher-order polynomial B-splines (quadratic through quintic) '
+    'maintain near-zero IQR at spacings up to 4 m across all dropout rates. Linear '
+    'interpolation diverges markedly beyond 2 m spacing: at 4 m and 20% dropout, linear '
+    'reaches failure rates of 100%, while quadratic through quintic remain below 65% and '
+    'cubic spline below 76%. At 6 m spacing the polynomial splines show failure rates '
+    'of 54–82% at 20% dropout, while linear reaches 100% even at 1% dropout.'
 )
 body(
-    'The failure rate heatmap (Figure 2, random dropout) quantifies this in safety-relevant '
-    'terms. Linear interpolation reaches failure rates of 32% at 5 m interval with 10% '
-    'dropout, rising to 73% at 15% dropout and 100% at 20% dropout. Quadratic, cubic '
-    'spline, quartic, and quintic B-splines maintain 0% failure rates at all dropout rates '
-    'up to 3 m spacing. At 5 m spacing and the highest dropout rates (15–20%), even '
-    'these methods show marginal failure rates (≤ 5%), while linear fails catastrophically. '
-    'PCHIP shows intermediate behaviour with failure rates of 7–26% at 5 m spacing '
-    'and high dropout. Akima performance is similar to PCHIP.'
-)
-body(
-    '**Answer to RQ1 (random dropout):** Quadratic and higher-order polynomial B-splines '
-    'are the clear best choice. Linear interpolation is unsuitable at CERPM intervals '
-    'above approximately 2 m when any realistic dropout rate is present.'
+    'At the literature deployment spacing of **12 m**, all methods fail at rates of '
+    '100% under random dropout of 9% or above. Even at 1% random dropout and 12 m '
+    'spacing, linear interpolation fails at 100%. Quadratic through quintic reach '
+    '100% failure by 5% random dropout at 12 m. This confirms that 12 m spacing is '
+    'fundamentally insufficient for any algorithm under realistic random dropout rates, '
+    'directly challenging the viability of the deployment interval used in the '
+    'foundational literature [2].'
 )
 
-h2('4.2. Clustered Dropout Results')
+h2('4.2. Clustered Dropout')
 body(
-    'Clustered dropout reveals a more severe degradation pattern for all methods. The '
-    'IQR heatmap (Figure 3, clustered dropout) shows linear interpolation producing '
-    'median IQR values of 1.945 m at cluster size 20 and 5 m spacing — operationally '
-    'catastrophic, representing a lane boundary offset larger than a typical lane width. '
-    'Even under moderate conditions (cluster size 5, 3 m spacing), linear interpolation '
-    'yields 0.032 m median IQR compared to 0.001 m for quadratic through quintic methods.'
+    'Clustered dropout produces more severe degradation. The IQR band plots (exhaustive '
+    'enumeration) show linear interpolation reaching median IQR values exceeding 8 m at '
+    'cluster size 20 and 12 m spacing — far larger than a lane width. Even quintic and '
+    'quartic B-splines show IQR values of several metres at these extreme conditions, '
+    'though their advantage over linear remains clear at moderate conditions.'
 )
 body(
-    'Higher-order polynomial methods also degrade under extreme conditions, but far more '
-    'slowly. At cluster size 20 and 5 m spacing, quintic and quartic B-splines achieve '
-    'median IQR values of 0.390 m — severe, but approximately 5× better than linear. '
-    'Cubic spline performs similarly (0.642 m). PCHIP degrades more rapidly than the '
-    'polynomial methods (1.587 m at cluster 20, 5 m), as its monotonicity constraint '
-    'produces flat reconstructions across large gaps where the road geometry is smooth '
-    'but not monotone in x or y individually.'
+    'The clustered failure rate heatmap reveals the critical finding: at 12 m spacing, '
+    '**all methods reach 100% failure for every tested cluster size.** At 6 m spacing, '
+    'linear interpolation reaches 100% failure at cluster size 2, while quartic and '
+    'quintic reach 29% failure at cluster size 2, rising to 100% at cluster size 10. '
+    'At 4 m spacing, polynomial splines maintain below 10% failure for cluster sizes '
+    'of 2, but exceed 80% at cluster size 10. PCHIP consistently underperforms the '
+    'polynomial methods at larger cluster sizes — at cluster size 20, 6 m spacing, '
+    'PCHIP reaches 100% failure while cubic spline reaches 66% and quartic/quintic '
+    'reach 70–76%.'
 )
 body(
-    'The clustered dropout failure rate heatmap (Figure 4) reveals a striking finding '
-    'regarding linear interpolation: at 5 m spacing, failure rates reach 93% for a cluster '
-    'of just 2 consecutive markers, meaning even the smallest tested contiguous gap is '
-    'nearly always fatal to linear reconstruction at this spacing. Quintic and quartic '
-    'B-splines achieve 32–33% failure at the hardest condition (cluster 20, 5 m), '
-    'compared to 95% for linear.'
-)
-body(
-    '**Answer to RQ2:** The 0.2 m failure threshold is exceeded by linear interpolation '
-    'at any clustered gap ≥ 2 markers combined with 5 m spacing. For polynomial B-splines, '
-    'significant failure rates begin at cluster sizes of 10+ markers at 5 m spacing, or '
-    'cluster sizes of 15+ at 3 m spacing.'
-)
-body(
-    '**Answer to RQ3:** Clustered dropout is substantially more damaging than random '
-    'dropout at equivalent average marker loss rates. For example, a cluster of 10 '
-    'markers at 5 m spacing removes all geometric information from a ~50 m road section; '
-    'the same 10 markers removed randomly across the full boundary leave local geometric '
-    'context intact at most points. All methods show markedly higher failure rates under '
-    'clustered than random dropout at equivalent effective loss fractions, confirming '
-    'that spatial correlation of failure is the more dangerous scenario.'
+    'At moderate conditions (cluster size ≤ 5, spacing ≤ 2 m), quartic and quintic '
+    'B-splines maintain below 4% failure, compared to 53% for linear at the same '
+    'conditions. This confirms the practical operating envelope: CERPM-based LKA '
+    'with polynomial spline reconstruction is robust only at spacings of 2 m or '
+    'finer with small cluster sizes.'
 )
 
-h2('4.3. Method Rankings')
-body('Synthesising across all conditions, the overall method ranking from best to worst is:')
+h2('4.3. Method Rankings and Key Findings')
 tbl(
-    ['Rank', 'Method', 'Failure rate range (all conditions)', 'Notes'],
+    ['Rank','Method','Clustered (cs=5, 4m)','Random (20%, 4m)','Notes'],
     [
-        ['1', 'Quintic B-spline',   '0–33%', 'Best overall; tied with quartic in most conditions'],
-        ['2', 'Quartic B-spline',   '0–33%', 'Effectively equivalent to quintic'],
-        ['3', 'Cubic Spline',       '0–95%', 'Good under random; degrades faster under clustered'],
-        ['4', 'Quadratic B-spline', '0–95%', 'Robust; marginally behind cubic at large clusters'],
-        ['5', 'Akima',              '0–95%', 'Moderate; better than PCHIP at large gaps'],
-        ['6', 'PCHIP',              '0–96%', 'Monotonicity constraint harmful for curved road gaps'],
-        ['7', 'Linear',             '0–100%','Unacceptable at spacings ≥ 2 m with any dropout'],
+        ['1','Quintic B-spline','36%','65%','Best or tied-best across all conditions'],
+        ['2','Quartic B-spline','35%','65%','Effectively equal to quintic'],
+        ['3','Cubic spline',    '39%','76%','Prior CERPM baseline; outperformed at large gaps'],
+        ['4','Quadratic spline','40%','71%','Robust; minimal gap vs cubic'],
+        ['5','Akima',           '50%','77%','Moderate; falls back to linear below 3 points'],
+        ['6','PCHIP',           '60%','80%','Monotonicity constraint harmful for curved gaps'],
+        ['7','Linear',          '100%','100%','Unsafe at any spacing ≥ 2 m with dropout'],
     ]
 )
-
-h2('4.4. Changes from Initial Research Plan')
 body(
-    'The initial research plan (as outlined in the abstract) proposed testing at CERPM '
-    'spacings including 5 m and 12 m, with the 12 m spacing reflecting the 40-foot '
-    'interval used in the referenced literature [2]. In implementation, the simulation '
-    'sweep was conducted at 0.5–5.0 m rather than extending to 12 m. This decision '
-    'was made because preliminary runs at 5 m spacing already showed severe degradation '
-    'across all methods under clustered dropout, and extending to 12 m would primarily '
-    'confirm this failure mode rather than add comparative insight. The 5 m condition '
-    'therefore serves as the representative coarse-spacing scenario.'
+    '**RQ1:** Quintic and quartic B-splines are the best-performing methods across all '
+    'conditions. Cubic spline — the prior CERPM standard — is outperformed at larger '
+    'cluster sizes and coarser spacings.'
 )
 body(
-    'Additionally, the plan referenced testing across "different road geometries." In '
-    'execution, a single road segment from the Town07 Lanelet2 map was used. While this '
-    'segment contains a variety of curve types, it represents a limitation relative to '
-    'the original scope. Testing across multiple maps remains a recommended direction '
-    'for future work.'
+    '**RQ2:** The 0.2 m safety threshold is exceeded by linear interpolation at any '
+    'clustered gap ≥ 2 markers with spacing ≥ 4 m (100% failure). Polynomial splines '
+    'begin significant failure at cluster size 10+ and spacing ≥ 4 m. At 12 m spacing '
+    'all methods fail under any dropout.'
 )
 body(
-    'A smoothing spline method (scipy UnivariateSpline) was also implemented in the '
-    'codebase but excluded from the primary sweep after initial testing showed it '
-    'did not pass through CERPM positions exactly — an unacceptable property for a '
-    'positioning system where marker coordinates are known precisely.'
+    '**RQ3:** Clustered dropout is substantially more damaging than random dropout at '
+    'equivalent average loss fractions. Removing 10 contiguous markers eliminates all '
+    'geometric information across a continuous road section; the same 10 markers removed '
+    'randomly leave local context intact at most points.'
 )
 
-page_break()
+h2('4.4. Deviations from Initial Research Plan')
+body(
+    'The initial plan proposed testing at 5 m and 12 m spacings among others. The '
+    'simulation was implemented at 0.5, 1, 2, 4, 6, and 12 m — the 12 m condition was '
+    'included to directly match the real-world deployment in [2]. A smoothing spline '
+    '(scipy UnivariateSpline) was implemented but excluded from the sweep as it does '
+    'not pass through known CERPM coordinates exactly, which is unacceptable when '
+    'marker positions are precisely known. Testing across multiple road maps remains '
+    'a limitation and is recommended for future work.'
+)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 5. CONCLUSIONS AND RECOMMENDATIONS
 # ══════════════════════════════════════════════════════════════════════════════
 h1('5. Conclusions and Recommendations')
-
-h2('5.1. Conclusions')
 body(
-    'This project has provided the first systematic evaluation of interpolation algorithm '
-    'robustness for CERPM-based lane centreline reconstruction. The following conclusions '
-    'are drawn:'
+    'This project provides the first systematic evaluation of interpolation algorithm '
+    'robustness for CERPM-based lane centreline reconstruction. Five conclusions are drawn:'
 )
-nbullet(
-    '**Higher-order polynomial B-splines outperform all other tested methods.** Quintic '
-    'and quartic B-splines with arc-length parameterisation achieved the lowest IQR and '
-    'failure rates across all tested combinations of CERPM spacing, dropout mode, and '
-    'severity. Their advantage over cubic spline — the method used in the foundational '
-    'CERPM literature — is largest under clustered dropout with large cluster sizes.'
-)
-nbullet(
-    '**Linear interpolation is unsafe at spacings above 1 m.** Failure rates exceed '
-    '30% at 5 m spacing and 10% random dropout, and exceed 93% at 5 m spacing '
-    'with a clustered gap of just 2 markers. Linear interpolation should not be used '
-    'as the reconstruction algorithm in any deployed CERPM-based LKA system.'
-)
-nbullet(
-    '**Clustered dropout is the more dangerous failure mode.** Removing contiguous '
-    'markers eliminates geometric information across an extended road section, '
-    'forcing extrapolation across a gap. All algorithms are more vulnerable to this '
-    'than to random marker loss of equivalent average rate.'
-)
-nbullet(
-    '**Marker spacing is the dominant design variable.** Reducing spacing from 5 m '
-    'to 2 m improves robustness dramatically for all algorithms. At 1 m spacing, '
-    'even linear interpolation maintains acceptable performance under random dropout '
-    'up to 20%.'
-)
-nbullet(
-    '**PCHIP is not well-suited to road geometry reconstruction.** Its monotonicity '
-    'constraint, beneficial for step-like data, produces flat extrapolations across '
-    'gaps in smooth curved road geometry, resulting in worse performance than '
-    'equivalent-order polynomial splines at large clustered gaps.'
-)
+nbullet('**Quintic and quartic B-splines with arc-length parameterisation are the recommended algorithms**, outperforming cubic spline — the current literature default — particularly under clustered dropout with large gap sizes.')
+nbullet('**Linear interpolation is unsafe at spacings above 1 m** under any realistic dropout. It reaches 100% failure at 4 m spacing even with cluster size 2, and must not be used in any deployed CERPM-based LKA system.')
+nbullet('**The 12 m (~40 ft) real-world deployment spacing from Kadav et al. [2] is insufficient** for robust reconstruction under any tested failure mode. All methods reach 100% failure at this spacing under clustered dropout of any tested size, and under random dropout above approximately 5%.')
+nbullet('**Clustered dropout is the more dangerous failure mode.** Spatially correlated marker loss destroys geometric information across an extended road section, producing larger errors than equivalent-rate random loss.')
+nbullet('**2 m spacing is the recommended minimum** for CERPM deployment on curved road sections when using polynomial spline reconstruction, with robust performance achieved at cluster sizes up to 5 and random dropout up to 20%.')
 
-h2('5.2. Recommendations')
-body('For engineers and infrastructure managers deploying CERPM-based LKA systems:')
-bullet('**Algorithm:** Use quintic or quartic B-spline interpolation with arc-length parameterisation as the default reconstruction algorithm. Cubic spline is an acceptable fallback. Do not use linear interpolation at spacings above 1 m.')
-bullet('**Marker spacing:** Deploy CERPMs at ≤ 2 m spacing on curved road sections. The 40-foot (~12 m) spacing used in prior research [2] is insufficient for robust reconstruction under any realistic dropout scenario; considerably finer spacing is required.')
-bullet('**Fault detection:** Implement system-level monitoring for clustered gaps. When more than 10 consecutive markers fail to report on either boundary, trigger fallback to camera-based lane detection or alert the driver.')
-bullet('**Future work:** Validate findings across multiple road maps with varying curvature statistics; test at the 12 m real-world deployment spacing from [2]; incorporate GPS positioning uncertainty into the simulation; and evaluate fusion of CERPM and camera inputs under combined failure modes.')
-
-page_break()
+doc.add_paragraph()
+body('Recommendations for practitioners:')
+bullet('Use **quintic or quartic B-spline** interpolation with arc-length parameterisation as the default reconstruction algorithm; cubic spline is an acceptable fallback.')
+bullet('Deploy CERPMs at **≤ 2 m spacing** on curved sections. The 40 ft spacing used in [2] requires revision given the results presented here.')
+bullet('Implement **clustered-gap detection**: when > 10 consecutive markers fail to report on either boundary, trigger fallback to camera sensing or raise a driver alert.')
+bullet('**Future work** should validate across multiple road maps, test GPS positioning uncertainty, and evaluate fusion of CERPM and camera inputs under combined failure modes.')
 
 # ══════════════════════════════════════════════════════════════════════════════
 # REFERENCES
 # ══════════════════════════════════════════════════════════════════════════════
+pb()
 h1('References')
 refs = [
-    '[1]  S. Sharma, J. Rojas, A. R. Ekti, R. Wang, Z. Asher, and R. Meyer, "Vehicle Lateral Offset Estimation Using Infrastructure Information for Reduced Compute Load," SAE Technical Paper 2023-01-0800, Apr. 2023, doi: 10.4271/2023-01-0800.',
-    '[2]  P. Kadav et al., "Automated Lane Centering: An Off-the-Shelf Computer Vision Product vs. Infrastructure-Based Chip-Enabled Raised Pavement Markers," Sensors, vol. 24, no. 7, pp. 2327–2327, Apr. 2024, doi: 10.3390/s24072327.',
-    '[3]  Department of Infrastructure, Transport, Cities and Regional Development, "Fact sheet: Evidence supporting the priority focus areas," National Road Safety Strategy, 2021. [Online]. Available: https://www.roadsafety.gov.au/nrss/fact-sheets/priority-focus-areas',
-    '[4]  National Highway Traffic Safety Administration, "Estimating Effectiveness of Lane Keeping Assist Systems in Fatal Road Departure Crashes," NHTSA Report 813663, 2024.',
-    '[5]  European Commission, "Mandatory drivers assistance systems expected to help save over 25,000 lives by 2038," Jul. 2024. [Online]. Available: https://single-market-economy.ec.europa.eu/news/mandatory-drivers-assistance-systems-expected-help-save-over-25000-lives-2038-2024-07-05_en',
-    '[6]  Y. Wang, A. Alhuraish, S. Yuan, and H. Zhou, "OpenLKA: Open Source Multimodal LKA Dataset," GitHub, 2025. [Online]. Available: https://github.com/OpenLKA/OpenLKA',
-    '[7]  I. Fakhari and S. Anwar, "A Multiple Model Estimation Approach to Robust Lane Detection via Computer Vision Based Models," in Proc. IEEE ISIE 2022, pp. 576–581, doi: 10.1109/isie51582.2022.9831692.',
-    '[8]  I. Fakhari and S. Anwar, "Computer vision model based robust lane detection using multiple model adaptive estimation methodology," Frontiers in Mechanical Engineering, vol. 11, Feb. 2025, doi: 10.3389/fmech.2025.1436338.',
-    '[9]  G. Perozzi, J. J. Rath, C. Sentouh, J. Floris, and J.-C. Popieul, "Lateral Shared Sliding Mode Control for Lane Keeping Assist System in Steer-by-Wire Vehicles," IEEE Trans. Intelligent Vehicles, vol. 8, no. 4, pp. 3073–3082, Apr. 2023, doi: 10.1109/tiv.2021.3097352.',
-    '[10] S. Wei, P. E. Pfeffer, and J. Edelmann, "State of the Art: Ongoing Research in Assessment Methods for Lane Keeping Assistance Systems," IEEE Trans. Intelligent Vehicles, vol. 9, no. 9, pp. 5853–5875, Sep. 2024, doi: 10.1109/tiv.2023.3269156.',
+    '[1]  S. Sharma et al., "Vehicle Lateral Offset Estimation Using Infrastructure Information for Reduced Compute Load," SAE Technical Paper 2023-01-0800, Apr. 2023.',
+    '[2]  P. Kadav et al., "Automated Lane Centering: An Off-the-Shelf Computer Vision Product vs. Infrastructure-Based Chip-Enabled Raised Pavement Markers," Sensors, vol. 24, no. 7, p. 2327, Apr. 2024.',
+    '[3]  Dept. of Infrastructure, Transport, Cities and Regional Development, "Fact sheet: Evidence supporting the priority focus areas," National Road Safety Strategy, 2021.',
+    '[4]  NHTSA, "Estimating Effectiveness of Lane Keeping Assist Systems in Fatal Road Departure Crashes," Report 813663, 2024.',
+    '[5]  European Commission, "Mandatory drivers assistance systems expected to help save over 25,000 lives by 2038," Jul. 2024.',
+    '[6]  Y. Wang et al., "OpenLKA: Open Source Multimodal LKA Dataset," GitHub, 2025.',
+    '[7]  I. Fakhari and S. Anwar, "A Multiple Model Estimation Approach to Robust Lane Detection via Computer Vision Based Models," in Proc. IEEE ISIE, 2022, pp. 576–581.',
+    '[8]  I. Fakhari and S. Anwar, "Computer vision model based robust lane detection using MMAE methodology," Frontiers in Mechanical Engineering, vol. 11, Feb. 2025.',
+    '[9]  G. Perozzi et al., "Lateral Shared Sliding Mode Control for LKA in Steer-by-Wire Vehicles," IEEE Trans. Intelligent Vehicles, vol. 8, no. 4, pp. 3073–3082, 2023.',
+    '[10] S. Wei et al., "State of the Art: Assessment Methods for Lane Keeping Assistance Systems," IEEE Trans. Intelligent Vehicles, vol. 9, no. 9, pp. 5853–5875, 2024.',
     '[11] R. L. Burden and J. D. Faires, Numerical Analysis, 9th ed. Brooks/Cole, 2011.',
     '[12] C. de Boor, A Practical Guide to Splines, Revised ed. Springer, 2001.',
     '[13] F. N. Fritsch and R. E. Carlson, "Monotone piecewise cubic interpolation," SIAM J. Numerical Analysis, vol. 17, no. 2, pp. 238–246, 1980.',
-    '[14] H. Akima, "A new method of interpolation and smooth curve fitting based on local procedures," J. ACM, vol. 17, no. 4, pp. 589–602, 1970.',
+    '[14] H. Akima, "A new method of interpolation and smooth curve fitting," J. ACM, vol. 17, no. 4, pp. 589–602, 1970.',
     '[15] R. Hartley and A. Zisserman, Multiple View Geometry in Computer Vision, 2nd ed. Cambridge University Press, 2003.',
-    '[16] F. Poggenhans et al., "Lanelet2: A high-definition map framework for the future of automated driving," in Proc. IEEE ITSC, 2018, pp. 1672–1679.',
-    '[17] ISO 21448:2022, Road Vehicles — Safety of the Intended Functionality, International Organisation for Standardisation, 2022.',
-    '[18] SAE International, SAE J3016: Taxonomy and Definitions for Terms Related to Driving Automation Systems, 2021.',
+    '[16] ISO 21448:2022, Road Vehicles — Safety of the Intended Functionality, ISO, 2022.',
+    '[17] SAE International, SAE J3016: Taxonomy and Definitions for Driving Automation Systems, 2021.',
 ]
 for ref in refs:
     p = doc.add_paragraph()
     p.paragraph_format.space_after = Pt(4)
     p.paragraph_format.left_indent = Cm(1.2)
     p.paragraph_format.first_line_indent = Cm(-1.2)
-    r = p.add_run(ref); r.font.name = FONT; r.font.size = SZ
-
-page_break()
+    r = p.add_run(ref); r.font.name=FONT; r.font.size=SZ
 
 # ══════════════════════════════════════════════════════════════════════════════
-# APPENDIX A — CODE STRUCTURE
+# APPENDIX A
 # ══════════════════════════════════════════════════════════════════════════════
-h1('Appendix A: Code Structure and Module Descriptions')
-body(
-    'The simulation framework consists of four Python modules, each with a distinct '
-    'responsibility, and one Lanelet2 OSM map file:'
-)
+pb()
+h1('Appendix A: Code Module Descriptions')
 tbl(
-    ['Module / File', 'Responsibility', 'Key functions'],
+    ['Module','Responsibility','Key functions'],
     [
-        ['test.py',
-         'Lanelet2 OSM parser; road geometry utilities',
-         'parse_osm(), resample(), calCenterline()'],
-        ['Interpolations.py',
-         'Seven interpolation method implementations with arc-length parameterisation',
-         'arcLengthParameter(), interpolate()'],
-        ['Simulation.py',
-         'Parallelised Monte Carlo engine; random and clustered dropout models; error measurement',
-         'runMonteCarloRandom(), runMonteCarloClusteredSingle(), measureError()'],
-        ['xmlParse.py',
-         'Full analysis pipeline; IQR / failure rate computation; 8 visualisation types',
-         'fullAnalysis(), _runSweepRandom(), _runSweepClustered()'],
-        ['Town07PowerPoint.osm',
-         'Lanelet2 road map providing ground-truth road geometry',
-         '—'],
+        ['test.py',          'Lanelet2 parser; CERPM resampling; centreline computation', 'resample(), calCenterline()'],
+        ['Interpolations.py','Seven interpolation methods; arc-length parameterisation',  'arcLengthParameter(), interpolate()'],
+        ['Simulation.py',    'Parallelised Monte Carlo; dropout models; error measurement','runMonteCarloRandom(), runMonteCarloClusteredSingle()'],
+        ['xmlParse.py',      'Parameter sweep; IQR/failure stats; visualisation',         'fullAnalysis()'],
     ]
 )
-
-h2('A.1. Interpolation Method Fallback Logic')
 body(
-    'To ensure numerical stability when few markers survive dropout, the following '
-    'fallback rules are applied within interpolate():'
-)
-bullet('Cubic spline and Akima require ≥ 3 surviving points; fewer → linear fallback.')
-bullet('B-spline of degree k requires ≥ k+1 surviving points; degree is clamped to min(k, n−1).')
-bullet('If fewer than 2 points survive on either boundary, the trial returns NaN and is excluded from statistics.')
-
-h2('A.2. Reproducibility')
-body(
-    'A master base seed (default: 0) is passed to numpy\'s default_rng(), which generates '
-    'a unique seed for each of the 2,000 trials. Re-running with the same base seed '
-    'produces bit-identical results. The baseSeed parameter can be changed to verify '
-    'that findings are not seed-dependent.'
+    'Reproducibility: each trial seed is derived from a master base seed via numpy default_rng(). '
+    'Re-running with identical base seed produces bit-identical results. '
+    'Fallback logic: cubic spline and Akima revert to linear when fewer than 3 points survive; '
+    'B-spline degree is clamped to min(k, n−1) where n is surviving point count.'
 )
 
 doc.save('/home/user/road-writing/Report.docx')
