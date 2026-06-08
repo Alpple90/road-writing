@@ -14,14 +14,6 @@ def _workerInit():
     matplotlib.use('Agg')
 
 
-def clusterDropout(cerpms, clusterSize, rng):
-    n = len(cerpms)
-    if n == 0 or clusterSize <= 0:
-        return list(cerpms)
-    start = rng.integers(0, n)
-    dropping = {start + i for i in range(clusterSize) if start + i < n}
-    return [c for i, c in enumerate(cerpms) if i not in dropping]
-
 
 def measureError(estimatedPts, true_x, true_y):
     trueLine = LineString(list(zip(true_x, true_y)))
@@ -63,16 +55,16 @@ def _runRandomTrial(args):
 
 
 def _runClusteredTrial(args):
-    seed, leftCERPMs, rightCERPMs, clusterSize, nOut, true_x, true_y, methods = args
-    crng = np.random.default_rng(seed)
-    dropSeed, sideSeed = crng.integers(0, 2**31, 2)
+    start, side, leftCERPMs, rightCERPMs, clusterSize, nOut, true_x, true_y, methods = args
 
-    if np.random.default_rng(int(sideSeed)).integers(0, 2) == 0:
-        leftSurv = clusterDropout(leftCERPMs, clusterSize, np.random.default_rng(int(dropSeed)))
+    if side == 0:
+        dropping = set(range(start, min(start + clusterSize, len(leftCERPMs))))
+        leftSurv  = [c for i, c in enumerate(leftCERPMs) if i not in dropping]
         rightSurv = list(rightCERPMs)
     else:
-        leftSurv = list(leftCERPMs)
-        rightSurv = clusterDropout(rightCERPMs, clusterSize, np.random.default_rng(int(dropSeed)))
+        dropping  = set(range(start, min(start + clusterSize, len(rightCERPMs))))
+        leftSurv  = list(leftCERPMs)
+        rightSurv = [c for i, c in enumerate(rightCERPMs) if i not in dropping]
 
     nan_result = {m: (np.nan, np.nan) for m in methods}
     if len(leftSurv) < 2 or len(rightSurv) < 2:
@@ -120,8 +112,8 @@ def runMonteCarloRandom(leftWay, rightWay, nRuns=500, cerpmInterval=1.0, dropout
     rightCERPMs = test.resample(rightWay, cerpmInterval)
     nOut = len(true_x)
 
-    rng = np.random.default_rng(baseSeed)
-    runSeeds = [int(s) for s in rng.integers(0, 2**31, nRuns)]
+    rng = np.random.SeedSequence(baseSeed)
+    runSeeds = [int(s.generate_state(1)[0]) for s in rng.spawn(nRuns)]
 
     args_list = [
         (runSeeds[i], leftCERPMs, rightCERPMs, dropoutRate, nOut, true_x, true_y, methods)
@@ -158,28 +150,70 @@ def runMonteCarloClusteredSingle(leftWay, rightWay, nRuns=500, cerpmInterval=1.0
 
     if clusterSize >= len(leftCERPMs) or clusterSize >= len(rightCERPMs):
         print(f"Clustered (size={clusterSize}) - cluster exceeds road length, all trials N/A.")
-        return {m: {'mean': np.full(nRuns, np.nan), 'max': np.full(nRuns, np.nan)} for m in methods}
+        return {m: {'mean': np.full(1, np.nan), 'max': np.full(1, np.nan)} for m in methods}
 
-    rng = np.random.default_rng(baseSeed)
-    runSeeds = [int(s) for s in rng.integers(0, 2**31, nRuns)]
-
+    # Enumerate every valid cluster start position on each side — no repetition possible.
+    # side=0: drop from left way; side=1: drop from right way.
     args_list = [
-        (runSeeds[i], leftCERPMs, rightCERPMs, clusterSize, nOut, true_x, true_y, methods)
-        for i in range(nRuns)
+        (start, side, leftCERPMs, rightCERPMs, clusterSize, nOut, true_x, true_y, methods)
+        for side, cerpms in ((0, leftCERPMs), (1, rightCERPMs))
+        for start in range(len(cerpms) - clusterSize + 1)
     ]
+    nTrials = len(args_list)
 
-    print(f"Clustered (size={clusterSize}) - {nRuns} trials ({len(methods)} methods)...")
-    trial_results = [None] * nRuns
+    print(f"Clustered (size={clusterSize}) - {nTrials} unique positions ({len(methods)} methods)...")
+    trial_results = [None] * nTrials
     with ProcessPoolExecutor(max_workers=maxWorkers, initializer=_workerInit) as executor:
         futures = {executor.submit(_runClusteredTrial, args): i for i, args in enumerate(args_list)}
         done = 0
-        reportEvery = max(1, nRuns // 10)
+        reportEvery = max(1, nTrials // 10)
         for future in as_completed(futures):
             i = futures[future]
             trial_results[i] = future.result()
             done += 1
             if done % reportEvery == 0:
-                print(f"  {done}/{nRuns}")
+                print(f"  {done}/{nTrials}")
+
+    print("Done.\n")
+    return _collectResults(trial_results, methods)
+
+
+def runMonteCarloGapLength(leftWay, rightWay, nRuns=500, cerpmInterval=1.0, gapLength=5.0,
+                            methods=None, baseSeed=0, maxWorkers=None):
+    if methods is None:
+        methods = DEFAULT_METHODS
+    methods = list(methods)
+
+    true_x, true_y = test.calCenterline(leftWay, rightWay)
+    leftCERPMs = test.resample(leftWay, cerpmInterval)
+    rightCERPMs = test.resample(rightWay, cerpmInterval)
+    nOut = len(true_x)
+
+    clusterSize = max(1, round(gapLength / cerpmInterval))
+
+    if clusterSize >= len(leftCERPMs) or clusterSize >= len(rightCERPMs):
+        print(f"Gap length (gap={gapLength}m -> {clusterSize} markers) - exceeds road length, all trials N/A.")
+        return {m: {'mean': np.full(1, np.nan), 'max': np.full(1, np.nan)} for m in methods}
+
+    args_list = [
+        (start, side, leftCERPMs, rightCERPMs, clusterSize, nOut, true_x, true_y, methods)
+        for side, cerpms in ((0, leftCERPMs), (1, rightCERPMs))
+        for start in range(len(cerpms) - clusterSize + 1)
+    ]
+    nTrials = len(args_list)
+
+    print(f"Gap length (gap={gapLength}m -> {clusterSize} markers) - {nTrials} positions ({len(methods)} methods)...")
+    trial_results = [None] * nTrials
+    with ProcessPoolExecutor(max_workers=maxWorkers, initializer=_workerInit) as executor:
+        futures = {executor.submit(_runClusteredTrial, args): i for i, args in enumerate(args_list)}
+        done = 0
+        reportEvery = max(1, nTrials // 10)
+        for future in as_completed(futures):
+            i = futures[future]
+            trial_results[i] = future.result()
+            done += 1
+            if done % reportEvery == 0:
+                print(f"  {done}/{nTrials}")
 
     print("Done.\n")
     return _collectResults(trial_results, methods)

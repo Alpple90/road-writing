@@ -23,6 +23,7 @@ METHOD_COLORS = {
 
 DEFAULT_CLUSTER_SIZES = (2, 5, 10, 15, 20)
 DEFAULT_DROPOUT_RATES = (0.01, 0.05, 0.1, 0.15, 0.2)
+DEFAULT_GAP_LENGTHS   = (2, 5, 10, 20)
 
 
 def parseOSM(path):
@@ -138,14 +139,60 @@ def _runSweepClustered(leftWay, rightWay, nRuns, intervals, clusterSizes, baseSe
     return sweepIQR, sweepP25, sweepP75, sweepFail
 
 
-def plotRandomIQRHeatmap(sweepP25, sweepP75, intervals, dropoutRates, nRuns=None):
+def _runSweepGapLength(leftWay, rightWay, nRuns, intervals, gapLengths, baseSeed, failureThreshold=0.2):
+    intervals   = list(intervals)
+    gapLengths  = list(gapLengths)
+    shape = (len(intervals),)
+
+    sweepIQR  = {g: {m: np.full(shape, np.nan) for m in METHODS} for g in gapLengths}
+    sweepP25  = {g: {m: np.full(shape, np.nan) for m in METHODS} for g in gapLengths}
+    sweepP75  = {g: {m: np.full(shape, np.nan) for m in METHODS} for g in gapLengths}
+    sweepFail = {g: {m: np.full(shape, np.nan) for m in METHODS} for g in gapLengths}
+
+    combinations = list(itertools.product(intervals, gapLengths))
+    print(f"\nGap-length sweep: {len(intervals)} intervals x {len(gapLengths)} gap lengths = {len(combinations)} combinations\n")
+
+    for idx, (interval, gap) in enumerate(combinations):
+        iRow = intervals.index(interval)
+        print(f"[{idx+1}/{len(combinations)}]  interval={interval}m  gapLength={gap}m")
+
+        mcResults = Simulation.runMonteCarloGapLength(
+            leftWay, rightWay,
+            nRuns=nRuns,
+            cerpmInterval=interval,
+            gapLength=gap,
+            methods=METHODS,
+            baseSeed=baseSeed + idx,
+        )
+
+        for m in METHODS:
+            meanArr = mcResults[m]['mean']
+            maxArr  = mcResults[m]['max']
+
+            validMean = meanArr[~np.isnan(meanArr)]
+            if len(validMean) >= 2:
+                p25, p75 = np.percentile(validMean, [25, 75])
+                sweepIQR[gap][m][iRow] = p75 - p25
+                sweepP25[gap][m][iRow] = p25
+                sweepP75[gap][m][iRow] = p75
+
+            nTotal = len(maxArr)
+            nFail  = int(np.sum(np.isnan(maxArr) | (maxArr > failureThreshold)))
+            sweepFail[gap][m][iRow] = 100.0 * nFail / nTotal if nTotal > 0 else np.nan
+
+    return sweepIQR, sweepP25, sweepP75, sweepFail
+
+
+def plotRandomIQRHeatmap(sweepP25, sweepP75, intervals, dropoutRates, sweepFail=None, nRuns=None, failureThreshold=0.2):
     intervals    = list(intervals)
     dropoutRates = list(dropoutRates)
     dropoutLabels  = [f'{int(r*100)}%' for r in dropoutRates]
     intervalLabels = [f'{v}m' for v in intervals]
 
     allIQR = [sweepP75[m] - sweepP25[m] for m in METHODS]
-    vmax = float(np.nanmax(allIQR)) if any(np.isfinite(a).any() for a in allIQR) else 1.0
+    allVals = np.concatenate([a.ravel() for a in allIQR])
+    allVals = allVals[np.isfinite(allVals)]
+    vmax = failureThreshold if len(allVals) else 1.0
 
     fig, axes = plt.subplots(1, len(METHODS), figsize=(6 * len(METHODS), 7))
 
@@ -153,8 +200,7 @@ def plotRandomIQRHeatmap(sweepP25, sweepP75, intervals, dropoutRates, nRuns=None
         ax   = axes[col]
         p25  = sweepP25[m]
         p75  = sweepP75[m]
-        iqr  = p75 - p25
-        ax.imshow(iqr, aspect='auto', cmap='RdYlGn_r', vmin=0, vmax=vmax)
+        ax.imshow(p75, aspect='auto', cmap='RdYlGn_r', vmin=0, vmax=vmax)
         ax.set_xticks(range(len(dropoutRates)))
         ax.set_xticklabels(dropoutLabels, rotation=45, ha='right', fontsize=7)
         ax.set_yticks(range(len(intervals)))
@@ -169,8 +215,8 @@ def plotRandomIQRHeatmap(sweepP25, sweepP75, intervals, dropoutRates, nRuns=None
                 v75 = p75[r, c]
                 if np.isfinite(v25) and np.isfinite(v75):
                     med = (v25 + v75) / 2.0
-                    ax.text(c, r, f'{med:.3f}\n(IQR {v25:.3f} - {v75:.3f})',
-                            ha='center', va='center', fontsize=6, color='black')
+                    label = f'{med:.3f}\n(IQR {v25:.3f} - {v75:.3f})'
+                    ax.text(c, r, label, ha='center', va='center', fontsize=6, color='black')
 
     title = 'Random dropout - IQR centreline error (P25 - P75) (m)'
     if nRuns:
@@ -180,7 +226,7 @@ def plotRandomIQRHeatmap(sweepP25, sweepP75, intervals, dropoutRates, nRuns=None
     plt.show(block=False)
 
 
-def plotClusteredIQRHeatmap(sweepP25, sweepP75, intervals, clusterSizes=None, nRuns=None):
+def plotClusteredIQRHeatmap(sweepP25, sweepP75, intervals, clusterSizes=None, sweepFail=None, nRuns=None, failureThreshold=0.2):
     intervals    = list(intervals)
     clusterSizes = list(clusterSizes if clusterSizes is not None else sweepP25.keys())
     nI  = len(intervals)
@@ -188,7 +234,9 @@ def plotClusteredIQRHeatmap(sweepP25, sweepP75, intervals, clusterSizes=None, nR
     nM  = len(METHODS)
 
     allIQR = [sweepP75[cs][m] - sweepP25[cs][m] for cs in clusterSizes for m in METHODS]
-    vmax = float(np.nanmax(allIQR)) if any(np.isfinite(a).any() for a in allIQR) else 1.0
+    allVals = np.concatenate([a.ravel() for a in allIQR])
+    allVals = allVals[np.isfinite(allVals)]
+    vmax = failureThreshold if len(allVals) else 1.0
 
     cellH  = 0.75
     gapH   = 0.2
@@ -205,8 +253,7 @@ def plotClusteredIQRHeatmap(sweepP25, sweepP75, intervals, clusterSizes=None, nR
             ax   = fig.add_subplot(gs[row, col])
             p25  = sweepP25[cs][m].reshape(-1, 1)
             p75  = sweepP75[cs][m].reshape(-1, 1)
-            iqr  = p75 - p25
-            ax.imshow(iqr, aspect='auto', cmap='RdYlGn_r', vmin=0, vmax=vmax)
+            ax.imshow(p75, aspect='auto', cmap='RdYlGn_r', vmin=0, vmax=vmax)
             for spine in ax.spines.values():
                 spine.set_edgecolor('black')
                 spine.set_linewidth(1.2)
@@ -224,17 +271,15 @@ def plotClusteredIQRHeatmap(sweepP25, sweepP75, intervals, clusterSizes=None, nR
                 v75 = sweepP75[cs][m][r]
                 if np.isfinite(v25) and np.isfinite(v75):
                     med = (v25 + v75) / 2.0
-                    ax.text(0, r, f'{med:.3f}\n(IQR {v25:.3f} - {v75:.3f})',
-                            ha='center', va='center', fontsize=6, color='black')
+                    label = f'{med:.3f}\n(IQR {v25:.3f} - {v75:.3f})'
+                    ax.text(0, r, label, ha='center', va='center', fontsize=6, color='black')
 
-    title = 'Clustered dropout - IQR centreline error (P25 - P75) (m)'
-    if nRuns:
-        title += f'  n={nRuns} runs each'
+    title = 'Clustered dropout - IQR centreline error (P25 - P75) (m)  |  exhaustive enumeration'
     fig.suptitle(title, fontsize=11, fontweight='bold', y=0.995)
     plt.show(block=False)
 
 
-def plotRandomIQRBands(sweepP25, sweepP75, intervals, dropoutRates, nRuns=None):
+def plotRandomIQRBands(sweepP25, sweepP75, intervals, dropoutRates, sweepFail=None, nRuns=None):
     intervals     = list(intervals)
     dropoutRates  = list(dropoutRates)
     nM  = len(METHODS)
@@ -253,6 +298,10 @@ def plotRandomIQRBands(sweepP25, sweepP75, intervals, dropoutRates, nRuns=None):
             ax.plot(intervals, med, color=color, linewidth=1.5, marker='o', markersize=3)
             ax.fill_between(intervals, p25, p75, alpha=0.3, color=color)
             ax.grid(True, linewidth=0.4, alpha=0.5)
+            ax.set_xticks(intervals)
+            ax.set_xticklabels([str(v) for v in intervals], fontsize=5)
+            ax.set_xlim(intervals[0] - 0.2, intervals[-1] + 0.2)
+
 
             if row == 0:
                 ax.set_title(f'{int(dr*100)}%', fontsize=9, fontweight='bold')
@@ -270,7 +319,7 @@ def plotRandomIQRBands(sweepP25, sweepP75, intervals, dropoutRates, nRuns=None):
     plt.show(block=False)
 
 
-def plotClusteredIQRBands(sweepP25, sweepP75, intervals, clusterSizes=None, nRuns=None):
+def plotClusteredIQRBands(sweepP25, sweepP75, intervals, clusterSizes=None, sweepFail=None, nRuns=None):
     intervals    = list(intervals)
     clusterSizes = list(clusterSizes if clusterSizes is not None else sweepP25.keys())
     nM  = len(METHODS)
@@ -289,6 +338,10 @@ def plotClusteredIQRBands(sweepP25, sweepP75, intervals, clusterSizes=None, nRun
             ax.plot(intervals, med, color=color, linewidth=1.5, marker='o', markersize=3)
             ax.fill_between(intervals, p25, p75, alpha=0.3, color=color)
             ax.grid(True, linewidth=0.4, alpha=0.5)
+            ax.set_xticks(intervals)
+            ax.set_xticklabels([str(v) for v in intervals], fontsize=5)
+            ax.set_xlim(intervals[0] - 0.2, intervals[-1] + 0.2)
+
 
             if row == 0:
                 ax.set_title(f'Cluster size {cs}', fontsize=9, fontweight='bold')
@@ -298,9 +351,7 @@ def plotClusteredIQRBands(sweepP25, sweepP75, intervals, clusterSizes=None, nRun
                 ax.set_xlabel('CERPM interval (m)', fontsize=7)
             ax.tick_params(labelsize=6)
 
-    title = 'Clustered dropout - IQR band per method  |  band = IQR (P25-P75)'
-    if nRuns:
-        title += f'  |  n={nRuns} runs'
+    title = 'Clustered dropout - IQR band per method  |  band = IQR (P25-P75)  |  exhaustive enumeration'
     fig.suptitle(title, fontsize=11, fontweight='bold')
     plt.tight_layout(rect=[0, 0, 1, 0.97])
     plt.show(block=False)
@@ -442,9 +493,139 @@ def plotClusteredFailureRate(sweepFail, intervals, clusterSizes=None, failureThr
                 ax.set_title(m, fontsize=8, fontweight='bold', pad=3)
             _annotateCells(ax, data, fontsize=8, fmt='pct')
 
-    title = f'Clustered dropout - failure rate (max error > {failureThreshold} m) (%)'
-    if nRuns:
-        title += f'  n={nRuns} runs each'
+    title = f'Clustered dropout - failure rate (max error > {failureThreshold} m) (%)  |  exhaustive enumeration'
+    fig.suptitle(title, fontsize=11, fontweight='bold', y=0.995)
+    plt.show(block=False)
+
+
+def plotGapLengthIQRHeatmap(sweepP25, sweepP75, intervals, gapLengths=None, sweepFail=None, nRuns=None, failureThreshold=0.2):
+    intervals  = list(intervals)
+    gapLengths = list(gapLengths if gapLengths is not None else sweepP25.keys())
+    nI  = len(intervals)
+    nGL = len(gapLengths)
+    nM  = len(METHODS)
+
+    allIQR  = [sweepP75[g][m] - sweepP25[g][m] for g in gapLengths for m in METHODS]
+    allVals = np.concatenate([a.ravel() for a in allIQR])
+    allVals = allVals[np.isfinite(allVals)]
+    vmax = failureThreshold if len(allVals) else 1.0
+
+    cellH  = 0.75
+    gapH   = 0.2
+    titleH = 0.4
+    figH   = titleH + nGL * (nI * cellH + gapH)
+    figW   = nM * 3.5
+
+    fig = plt.figure(figsize=(figW, figH))
+    gs  = gridspec.GridSpec(nGL, nM, figure=fig, hspace=gapH / (nI * cellH), wspace=0.05,
+                            left=0.07, right=0.98, top=1 - titleH / figH, bottom=0.02)
+
+    for row, g in enumerate(gapLengths):
+        for col, m in enumerate(METHODS):
+            ax   = fig.add_subplot(gs[row, col])
+            p25  = sweepP25[g][m].reshape(-1, 1)
+            p75  = sweepP75[g][m].reshape(-1, 1)
+            iqr  = p75 - p25
+            ax.imshow(p75, aspect='auto', cmap='RdYlGn_r', vmin=0, vmax=vmax)
+            for spine in ax.spines.values():
+                spine.set_edgecolor('black')
+                spine.set_linewidth(1.2)
+            ax.set_xticks([])
+            ax.set_yticks(range(nI))
+            if col == 0:
+                ax.set_yticklabels([f'{iv}m' for iv in intervals], fontsize=6)
+                ax.set_ylabel(f'gap={g}m', fontsize=7, fontweight='bold', labelpad=4)
+            else:
+                ax.set_yticklabels([])
+            if row == 0:
+                ax.set_title(m, fontsize=8, fontweight='bold', pad=3)
+            for r in range(nI):
+                v25 = sweepP25[g][m][r]
+                v75 = sweepP75[g][m][r]
+                if np.isfinite(v25) and np.isfinite(v75):
+                    med = (v25 + v75) / 2.0
+                    label = f'{med:.3f}\n(IQR {v25:.3f} - {v75:.3f})'
+                    ax.text(0, r, label, ha='center', va='center', fontsize=6, color='black')
+
+    title = 'Gap-length dropout - IQR centreline error (P25 - P75) (m)  |  exhaustive enumeration'
+    fig.suptitle(title, fontsize=11, fontweight='bold', y=0.995)
+    plt.show(block=False)
+
+
+def plotGapLengthIQRBands(sweepP25, sweepP75, intervals, gapLengths=None, sweepFail=None, nRuns=None):
+    intervals  = list(intervals)
+    gapLengths = list(gapLengths if gapLengths is not None else sweepP25.keys())
+    nM  = len(METHODS)
+    nGL = len(gapLengths)
+
+    fig, axes = plt.subplots(nM, nGL, figsize=(3 * nGL, 2.5 * nM), sharey=True, sharex=True)
+
+    for row, m in enumerate(METHODS):
+        color = METHOD_COLORS[m]
+        for col, g in enumerate(gapLengths):
+            ax  = axes[row, col]
+            p25 = sweepP25[g][m]
+            p75 = sweepP75[g][m]
+            med = (p25 + p75) / 2.0
+
+            ax.plot(intervals, med, color=color, linewidth=1.5, marker='o', markersize=3)
+            ax.fill_between(intervals, p25, p75, alpha=0.3, color=color)
+            ax.grid(True, linewidth=0.4, alpha=0.5)
+            ax.set_xticks(intervals)
+            ax.set_xticklabels([str(v) for v in intervals], fontsize=5)
+            ax.set_xlim(intervals[0] - 0.2, intervals[-1] + 0.2)
+
+            if row == 0:
+                ax.set_title(f'Gap {g}m', fontsize=9, fontweight='bold')
+            if col == 0:
+                ax.set_ylabel(m, fontsize=8, fontweight='bold')
+            if row == nM - 1:
+                ax.set_xlabel('CERPM interval (m)', fontsize=7)
+            ax.tick_params(labelsize=6)
+
+    title = 'Gap-length dropout - IQR band per method  |  band = IQR (P25-P75)  |  exhaustive enumeration'
+    fig.suptitle(title, fontsize=11, fontweight='bold')
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
+    plt.show(block=False)
+
+
+def plotGapLengthFailureRate(sweepFail, intervals, gapLengths=None, failureThreshold=0.2, nRuns=None):
+    intervals  = list(intervals)
+    gapLengths = list(gapLengths if gapLengths is not None else sweepFail.keys())
+    nI  = len(intervals)
+    nGL = len(gapLengths)
+    nM  = len(METHODS)
+
+    cellH  = 0.45
+    gapH   = 0.15
+    titleH = 0.4
+    figH   = titleH + nGL * (nI * cellH + gapH)
+    figW   = nM * 2.2
+
+    fig = plt.figure(figsize=(figW, figH))
+    gs  = gridspec.GridSpec(nGL, nM, figure=fig, hspace=gapH / (nI * cellH), wspace=0.05,
+                            left=0.07, right=0.98, top=1 - titleH / figH, bottom=0.02)
+
+    for row, g in enumerate(gapLengths):
+        for col, m in enumerate(METHODS):
+            ax   = fig.add_subplot(gs[row, col])
+            data = sweepFail[g][m].reshape(-1, 1)
+            ax.imshow(data, aspect='auto', cmap='RdYlGn_r', vmin=0, vmax=100)
+            for spine in ax.spines.values():
+                spine.set_edgecolor('black')
+                spine.set_linewidth(1.2)
+            ax.set_xticks([])
+            ax.set_yticks(range(nI))
+            if col == 0:
+                ax.set_yticklabels([f'{iv}m' for iv in intervals], fontsize=6)
+                ax.set_ylabel(f'gap={g}m', fontsize=7, fontweight='bold', labelpad=4)
+            else:
+                ax.set_yticklabels([])
+            if row == 0:
+                ax.set_title(m, fontsize=8, fontweight='bold', pad=3)
+            _annotateCells(ax, data, fontsize=8, fmt='pct')
+
+    title = f'Gap-length dropout - failure rate (max error > {failureThreshold} m) (%)  |  exhaustive enumeration'
     fig.suptitle(title, fontsize=11, fontweight='bold', y=0.995)
     plt.show(block=False)
 
@@ -495,7 +676,7 @@ def plotClusteredRankingHeatmap(sweepIQR, intervals, clusterSizes=None):
                 ax.set_title(m, fontsize=8, fontweight='bold', pad=3)
             _annotateCells(ax, data, fontsize=8, fmt='d')
 
-    fig.suptitle('Clustered dropout - method ranking by IQR (1 = lowest)', fontsize=11, fontweight='bold', y=0.995)
+    fig.suptitle('Clustered dropout - method ranking by IQR (1 = lowest)  |  exhaustive enumeration', fontsize=11, fontweight='bold', y=0.995)
     plt.show(block=False)
 
 
@@ -539,14 +720,15 @@ def clusteredSummaryTable(sweepIQR, intervals, clusterSizes=None):
 def _saveFigs(outputDir):
     os.makedirs(outputDir, exist_ok=True)
     figNames = [
-        'random_ranking_heatmap',
         'random_iqr_heatmap',
         'random_iqr_bands',
         'random_failure_rate',
-        'clustered_ranking_heatmap',
         'clustered_iqr_heatmap',
         'clustered_iqr_bands',
         'clustered_failure_rate',
+        'gaplength_iqr_heatmap',
+        'gaplength_iqr_bands',
+        'gaplength_failure_rate',
     ]
     figNums = plt.get_fignums()
     for i, figNum in enumerate(figNums):
@@ -559,8 +741,8 @@ def _saveFigs(outputDir):
 
 
 def fullAnalysis(nRuns=500, intervals=(0.5, 1.0, 2.0, 3.0, 5.0), dropoutRates=(0.01, 0.05, 0.1, 0.15, 0.2),
-                 clusterSizes=(2, 5, 10, 15, 20), baseSeed=0, failureThreshold=0.2,
-                 path='Maps/PowerPoint/Town07PowerPoint.osm'):
+                 clusterSizes=(2, 5, 10, 15, 20), gapLengths=(2, 5, 10, 20), baseSeed=0,
+                 failureThreshold=0.2, path='Maps/PowerPoint/Town07PowerPoint.osm'):
     lanelets = parseOSM(path)
     leftWay, rightWay = test.combineWays(lanelets)
 
@@ -572,20 +754,27 @@ def fullAnalysis(nRuns=500, intervals=(0.5, 1.0, 2.0, 3.0, 5.0), dropoutRates=(0
         leftWay, rightWay, nRuns, intervals,
         clusterSizes, baseSeed, failureThreshold=failureThreshold)
 
+    gIQR, gP25, gP75, gFail = _runSweepGapLength(
+        leftWay, rightWay, nRuns, intervals,
+        gapLengths, baseSeed, failureThreshold=failureThreshold)
+
     randomSummaryTable(rIQR, intervals, dropoutRates)
     clusteredSummaryTable(cIQR, intervals)
 
-    plotRandomRankingHeatmap(rIQR, intervals, dropoutRates)
-    plotRandomIQRHeatmap(rP25, rP75, intervals, dropoutRates, nRuns=nRuns)
-    plotRandomIQRBands(rP25, rP75, intervals, dropoutRates, nRuns=nRuns)
+    plotRandomIQRHeatmap(rP25, rP75, intervals, dropoutRates, sweepFail=rFail, nRuns=nRuns, failureThreshold=failureThreshold)
+    plotRandomIQRBands(rP25, rP75, intervals, dropoutRates, sweepFail=rFail, nRuns=nRuns)
     plotRandomFailureRate(rFail, intervals, dropoutRates,
                           failureThreshold=failureThreshold, nRuns=nRuns)
 
-    plotClusteredRankingHeatmap(cIQR, intervals)
-    plotClusteredIQRHeatmap(cP25, cP75, intervals, clusterSizes, nRuns=nRuns)
-    plotClusteredIQRBands(cP25, cP75, intervals, clusterSizes, nRuns=nRuns)
+    plotClusteredIQRHeatmap(cP25, cP75, intervals, clusterSizes, sweepFail=cFail, nRuns=nRuns, failureThreshold=failureThreshold)
+    plotClusteredIQRBands(cP25, cP75, intervals, clusterSizes, sweepFail=cFail, nRuns=nRuns)
     plotClusteredFailureRate(cFail, intervals,
                              failureThreshold=failureThreshold, nRuns=nRuns)
+
+    plotGapLengthIQRHeatmap(gP25, gP75, intervals, gapLengths, sweepFail=gFail, nRuns=nRuns, failureThreshold=failureThreshold)
+    plotGapLengthIQRBands(gP25, gP75, intervals, gapLengths, sweepFail=gFail, nRuns=nRuns)
+    plotGapLengthFailureRate(gFail, intervals,
+                              failureThreshold=failureThreshold, nRuns=nRuns)
 
     mapName  = os.path.splitext(os.path.basename(path))[0]
     outputDir = os.path.join('Results', mapName)
@@ -619,11 +808,11 @@ if __name__ == '__main__':
     plotRoads(leftprint, rightprint)
 
     MAPS = [
-        'Maps/PowerPoint/Town07PowerPoint.osm',
+        #'Maps/PowerPoint/Town07PowerPoint.osm',
+        #'Maps/PowerPoint/Town044.osm',
+        #'Maps/PowerPoint/Town042.osm',
         'Maps/PowerPoint/Town041.osm',
-        'Maps/PowerPoint/Town042.osm',
         'Maps/PowerPoint/Town043.osm',
-        'Maps/PowerPoint/Town044.osm',
     ]
 
     for mapPath in MAPS:
@@ -632,9 +821,10 @@ if __name__ == '__main__':
         print(f'{"="*78}\n')
         fullAnalysis(
             nRuns=2000,
-            intervals=(0.5, 1.0, 2.0, 3.0, 5.0),
-            dropoutRates=(0.01, 0.05, 0.1, 0.15, 0.2),
+            intervals=(0.5, 1.0, 2.0, 4.0, 6.0, 12.0),
+            dropoutRates=(0.1, 0.15, 0.2, 0.25),
             clusterSizes=(2, 5, 10, 15, 20),
+            gapLengths=(2, 5, 10, 15, 20),
             failureThreshold=0.2,
             path=mapPath,
         )
